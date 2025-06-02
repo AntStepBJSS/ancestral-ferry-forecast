@@ -1,0 +1,25 @@
+import requests
+from dotenv import load_dotenv
+import os
+load_dotenv()
+api_key = os.getenv("API_KEY")
+base_url = "https://gateway.ci.api-management.metoffice.cloud/blended-probabilistic-forecast-object-svc/1.0.0"
+url = f"{base_url}/collections/uk-spot-probabilities/items"
+headers = {
+    "accept": "*/*",
+    "apikey": api_key  
+}
+response = requests.get(url, headers=headers).json()
+
+item_id = response["items"][0]["file_metadata"]["item_id"]
+
+item_url = f"{url}/{item_id}"
+url_response = requests.get(item_url, headers=headers).url
+print(url_response)
+download_response = requests.get(url_response, stream=True)
+if download_response.ok:
+    filename = "downloaded_file.nc"
+    with open(filename, 'wb') as f:
+        f.write(download_response.content)
+ 
+ 

@@ -1,0 +1,26 @@
+[project]
+name = "ancestral-ferry-forecast"
+version = "0.1.0"
+description = "Ferry forecasting"
+authors = [
+    {name = "Anthony Stephenson", email = "anthony.stephenson@bjss.com"},
+]
+dependencies = [
+    "matplotlib>=3.10.3",
+    "xarray>=2025.4.0",
+    "numpy>=2.2.6",
+    "pyproj>=3.7.1",
+    "requests>=2.32.3",
+    "dotenv>=0.9.9"
+]
+requires-python = ">=3.12"
+readme = "README.md"
+license = {text = "MIT"}
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+
+[tool.pdm]
+distribution = true
