@@ -1,0 +1,75 @@
+import requests
+from dotenv import load_dotenv
+import os
+load_dotenv()
+api_key = os.getenv("API_KEY")
+# base_url = "https://gateway.ci.api-management.metoffice.cloud/blended-probabilistic-forecast-object-svc/1.0.0"
+base_url = "https://gateway.api-management.metoffice.cloud/blended-probabilistic-forecast-object-svc/1.0.0"
+url = f"{base_url}/collections/uk-gridded-percentiles/items"
+url_filtered_on_date_time = f"{url}?datetime=2025-06-03T10:00:00Z/.."
+headers = {
+    "accept": "*/*",
+    "apikey": api_key  
+}
+response = requests.get(url_filtered_on_date_time, headers=headers).json()
+items = response["items"]
+page = 1
+filter_to_wind_items = []
+for item in items:
+    content_metadata = item.get("content_metadata", [])
+    for metadata in content_metadata:
+        # if metadata.get("standard_name") == "wind_from_direction":
+        name = metadata.get("standard_name", "")+metadata.get("long_name", "")
+        if "wind" in name:
+            filter_to_wind_items.append(item)
+
+next_page_token = response["next_page_token"]
+while next_page_token:
+    page+=1
+    # Fetch the next page of items
+    url_next = f"{url_filtered_on_date_time}&next_page_token={next_page_token}"
+    response = requests.get(url_next, headers=headers).json()
+    items = response["items"]
+    for item in items:
+        content_metadata = item.get("content_metadata", [])
+        for metadata in content_metadata:
+            name = metadata.get("standard_name", "")+metadata.get("long_name", "")
+            if "wind" in name:
+                 filter_to_wind_items.append(item)
+    next_page_token = response["next_page_token"]
+
+def download_wind_item(url, headers, item_id, file_name):
+    # item_id = 'ea59d11e-538a-3d71-a589-8240af6f5656'
+    item_url = f"{url}/{item_id}"
+
+    url_response = requests.get(item_url, headers=headers).url
+    print(url_response)
+    download_response = requests.get(url_response, stream=True)
+    if download_response.ok:
+        filename = file_name
+        with open(filename, 'wb') as f:
+            f.write(download_response.content)
+
+# Search for wind_from_direction in standard_name in content_metadata within items
+for item in filter_to_wind_items:
+    content_metadata = item.get("content_metadata", [])
+    file_name = item.get("file_metadata", {}).get("file_name", "")
+    for metadata in content_metadata:
+        forecast_reference_time = metadata.get("forecast_reference_time")
+        forecast_time_for = metadata.get("time")[0]
+        if metadata.get("standard_name") == "wind_from_direction":
+            if forecast_reference_time == '2025-06-03T08:00:00.000Z':
+                if forecast_time_for == '2025-06-06T23:00:00.000Z':
+                    item_id = item["file_metadata"]["item_id"]
+                    print("Found wind_from_direction in item:")
+                    download_wind_item(url, headers, item_id, file_name)
+        if metadata.get("standard_name") == "wind_speed":
+            if forecast_reference_time == '2025-06-03T08:00:00.000Z':
+                if forecast_time_for == '2025-06-06T23:00:00.000Z':
+                    item_id = item["file_metadata"]["item_id"]
+                    print("Found wind_speed in item:")
+                    download_wind_item(url, headers, item_id, file_name)
+                    print(metadata)
+
+ 
+ 

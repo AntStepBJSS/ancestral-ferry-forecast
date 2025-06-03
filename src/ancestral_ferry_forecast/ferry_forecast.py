@@ -3,7 +3,7 @@ import numpy
 from pyproj import Proj
 import matplotlib.pyplot as plot
 
-fp = '20250530T1800Z-B20250530T0700Z-wind_speed_at_10m.nc'
+fp = './src/ancestral_ferry_forecast/20250607T1000Z-B20250602T1015Z-wind_speed_at_10m.nc'
 
 # Open the NetCDF file using xarray
 ds = xarray.open_dataset(fp)

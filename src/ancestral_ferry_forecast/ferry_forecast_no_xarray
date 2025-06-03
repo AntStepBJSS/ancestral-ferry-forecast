@@ -1,0 +1,61 @@
+import netCDF4
+from pyproj import Proj
+import matplotlib.pyplot as plot
+
+netcdf_file_path = './src/ancestral_ferry_forecast/20250607T1000Z-B20250602T1015Z-wind_speed_at_10m.nc'
+
+# Open the NetCDF file using netCDF4
+dataset = netCDF4.Dataset(netcdf_file_path, mode='r')
+
+# Define the latitude and longitude of the location
+target_latitude = 53.7989  # Example latitude
+target_longitude = -17.555 # Example longitude
+
+# Manually construct the projection parameters
+projection_var = dataset.variables['lambert_azimuthal_equal_area']
+projection_params = {
+    'proj': 'laea',
+    'lat_0': projection_var.latitude_of_projection_origin,
+    'lon_0': projection_var.longitude_of_projection_origin,
+    'x_0': projection_var.false_easting,
+    'y_0': projection_var.false_northing,
+    'a': projection_var.semi_major_axis,
+    'b': projection_var.semi_minor_axis,
+    'datum': 'WGS84'
+}
+projection = Proj(projection_params)
+
+# Convert latitude and longitude to projection coordinates
+target_x, target_y = projection(target_longitude, target_latitude)
+
+# Extract the projection coordinates
+x_grid = list(dataset.variables['projection_x_coordinate'][:])
+y_grid = list(dataset.variables['projection_y_coordinate'][:])
+
+# Create meshgrid manually
+x_mesh = [x_grid for _ in y_grid]
+y_mesh = [[y for _ in x_grid] for y in y_grid]
+
+# Find the closest indices to the converted coordinates
+def find_closest_index(array, value):
+    return min(range(len(array)), key=lambda i: abs(array[i] - value))
+
+closest_x_idx = find_closest_index(x_grid, target_x)
+closest_y_idx = find_closest_index(y_grid, target_y)
+
+# Access the wind speed data at the location
+wind_speed_timeseries = dataset.variables['wind_speed'][:, closest_y_idx, closest_x_idx]
+
+print(f"Wind speed at location (lat: {target_latitude}, lon: {target_longitude}):")
+print(wind_speed_timeseries)
+
+# Plot the projection coordinates and mark the location
+plot.figure(figsize=(10, 8))
+plot.scatter([x for row in x_mesh for x in row], [y for row in y_mesh for y in row], s=1, label='Projection Coordinates')
+plot.scatter(target_x, target_y, color='red', label='Checked Location')
+plot.xlabel('Projection X Coordinate')
+plot.ylabel('Projection Y Coordinate')
+plot.title('Projection Coordinates and Checked Location')
+plot.legend()
+plot.grid()
+plot.show()
