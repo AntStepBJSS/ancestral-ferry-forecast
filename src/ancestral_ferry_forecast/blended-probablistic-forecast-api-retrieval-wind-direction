@@ -3,6 +3,11 @@ from dotenv import load_dotenv
 import os
 from dataclasses import dataclass
 
+API_DATETIME_FILTER_START = "2025-06-04T13:00:00Z"
+FORECAST_BASE_DATETIME_FOR_MATCH = "2025-06-04T"
+FORECAST_TIME_FOR_MATCH = "2025-06-08T13"
+
+
 @dataclass
 class WindItem:
     item_id: str
@@ -12,23 +17,52 @@ class WindItem:
     forecast_reference_time: str
     forecast_time_for: str
 
-load_dotenv()
-api_key = os.getenv("API_KEY")
-# base_url = "https://gateway.ci.api-management.metoffice.cloud/blended-probabilistic-forecast-object-svc/1.0.0"
-base_url = "https://gateway.api-management.metoffice.cloud/blended-probabilistic-forecast-object-svc/1.0.0"
-url = f"{base_url}/collections/uk-gridded-percentiles/items"
-url_filtered_on_date_time = f"{url}?datetime=2025-06-03T10:00:00Z/.."
-headers = {
-    "accept": "*/*",
-    "apikey": api_key  
-}
-response = requests.get(url_filtered_on_date_time, headers=headers).json()
 
-page = 1
-filter_to_wind_items: list[WindItem] = []
 item_id_check_list = []
+filter_to_wind_items: list[WindItem] = []
 
-def filter_wind_items(response)->bool:
+
+def main():
+    load_dotenv()
+    api_key = os.getenv("API_KEY")
+    base_url = "https://gateway.api-management.metoffice.cloud/blended-probabilistic-forecast-object-svc/1.0.0"
+    full_url = f"{base_url}/collections/uk-gridded-percentiles/items"
+    datetime_filter_for_url = f"datetime={API_DATETIME_FILTER_START}/.."
+    url_filtered_on_date_time = f"{full_url}?{datetime_filter_for_url}"
+    headers = {"accept": "*/*", "apikey": api_key}
+    response = requests.get(url_filtered_on_date_time, headers=headers).json()
+
+    page = 1
+
+    filter_wind_items(response)
+
+    next_page_token = response.get("next_page_token")
+    while next_page_token:
+        print(f"\rPages: {page}", end="", flush=True)
+        page += 1
+        url_next = f"{full_url}?token={next_page_token}&{datetime_filter_for_url}"
+        response = requests.get(url_next, headers=headers).json()
+        duplicate_item = filter_wind_items(response)
+        next_page_token = response.get("next_page_token")
+        if duplicate_item:
+            print("Duplicate items found, stopping further processing.")
+            break
+
+    # Search for wind_from_direction in standard_name in content_metadata within items
+    for wind_item in filter_to_wind_items:
+        if wind_item.standard_name == "wind_from_direction":
+            print(f"Downloading wind_from_direction in file: {wind_item.file_name}")
+            download_wind_item(
+                full_url, headers, wind_item.item_id, wind_item.file_name
+            )
+        if wind_item.standard_name == "wind_speed":
+            print(f"Downloading wind_speed in file: {wind_item.file_name}")
+            download_wind_item(
+                full_url, headers, wind_item.item_id, wind_item.file_name
+            )
+
+
+def filter_wind_items(response) -> bool:
     items = response["items"]
     for item in items:
         item_id_match = item["file_metadata"].get("item_id", "")
@@ -39,64 +73,38 @@ def filter_wind_items(response)->bool:
         content_metadata = item.get("content_metadata", [])
         file_metadata = item.get("file_metadata", {})
         for metadata in content_metadata:
-            name = metadata.get("standard_name", "")+metadata.get("long_name", "")
-            print(f"\rName: {name}")
-    
-            if "wind" in name: # and name != "wind_speed_of_gust" and name != "wind_from_direction_of_gust":
+            name = metadata.get("standard_name", "") + metadata.get("long_name", "")
+            # print(f"\rName: {name}")
+
+            if "wind_speed" == name or "wind_direction" in name:
                 wind_item = WindItem(
                     item_id=file_metadata.get("item_id", ""),
                     file_name=file_metadata.get("file_name", ""),
                     standard_name=metadata.get("standard_name", ""),
                     long_name=metadata.get("long_name", ""),
                     forecast_reference_time=metadata.get("forecast_reference_time", ""),
-                    forecast_time_for=metadata.get("time", [""])[0]
+                    forecast_time_for=metadata.get("time", [""])[0],
                 )
-                forecast_reference_time_match = '2025-06-03'
-                # forecast_time_for_match = '2025-06-06'
-                if wind_item.forecast_reference_time.startswith(forecast_reference_time_match): #and \
-                   #wind_item.forecast_time_for.startswith(forecast_time_for_match):
-                    print(f"Found wind item: {wind_item}")
+                #Maybe convert to a real date and use greater than??
+                if wind_item.forecast_reference_time.startswith(
+                    FORECAST_BASE_DATETIME_FOR_MATCH
+                ) and wind_item.forecast_time_for.startswith(FORECAST_TIME_FOR_MATCH):
+                    print(
+                        f" Found wind item: {wind_item.standard_name} for {wind_item.forecast_time_for} forecasted at {wind_item.forecast_reference_time}"
+                    )
                     filter_to_wind_items.append(wind_item)
     return False
-duplicate_item = filter_wind_items(response)
 
-next_page_token = response["next_page_token"]
-while next_page_token:
-    print(f"\rPages: {page}", end="", flush=True)
-    page+=1
-    # Fetch the next page of items
-    url_next = f"{url_filtered_on_date_time}&next_page_token={next_page_token}"
-    response = requests.get(url_next, headers=headers).json()
-    duplicate_item = filter_wind_items(response)
-    next_page_token = response["next_page_token"]
-    if duplicate_item:
-        print("Duplicate items found, stopping further processing.")
-        break
 
 def download_wind_item(url, headers, item_id, file_name):
-    # item_id = 'ea59d11e-538a-3d71-a589-8240af6f5656'
     item_url = f"{url}/{item_id}"
-
     url_response = requests.get(item_url, headers=headers).url
-    # print(url_response)
     download_response = requests.get(url_response, stream=True)
     if download_response.ok:
-        filename = file_name
-        with open(filename, 'wb') as f:
+        file_location_and_name = f"downloads/{file_name}"
+        with open(file_location_and_name, "wb") as f:
             f.write(download_response.content)
 
-# Search for wind_from_direction in standard_name in content_metadata within items
-for wind_item in filter_to_wind_items:
-    forecast_reference_time_match = '2025-06-03T'
-    if wind_item.standard_name == "wind_from_direction":
-        # if wind_item.forecast_reference_time == '2025-06-03T08:00:00.000Z':
-        #     if wind_item.forecast_time_for == '2025-06-06T23:00:00.000Z':
-                print("Found wind_from_direction in item:")
-                download_wind_item(url, headers, wind_item.item_id, wind_item.file_name)
-    if wind_item.standard_name == "wind_speed":
-        # if wind_item.forecast_reference_time == '2025-06-03T08:00:00.000Z':
-        #     if wind_item.forecast_time_for == '2025-06-06T23:00:00.000Z':
-                print("Found wind_speed in item:")
-                download_wind_item(url, headers, wind_item.item_id, wind_item.file_name)
 
-
+if __name__ == "__main__":
+    main()
