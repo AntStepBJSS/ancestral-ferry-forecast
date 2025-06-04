@@ -7,7 +7,7 @@ authors = [
 ]
 dependencies = [
     "boto3[dynamodb]>=1.38.27",
-    "pydantic>=2.11.5"
+    "dacite>=1.9.2"
 ]
 requires-python = ">=3.12"
 readme = "README.md"
