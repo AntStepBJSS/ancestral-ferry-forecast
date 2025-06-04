@@ -3,9 +3,9 @@ import logging
 import os
 from typing import Optional
 
-import dacite
+from dataclasses_json import dataclass_json
 from dacite import from_dict
-
+import dacite
 import boto3
 from datetime import datetime
 from dataclasses import dataclass
@@ -46,6 +46,7 @@ logger = logging.getLogger()
 logger.setLevel(log_level)
 
 
+@dataclass_json
 @dataclass
 class PointData:
     lat: float
@@ -54,6 +55,7 @@ class PointData:
     unsafe_wind_direction: Optional[str] = None  # 170-200,350-20
 
 
+@dataclass_json
 @dataclass
 class RequestModelV1:
     latitude: float
@@ -61,6 +63,7 @@ class RequestModelV1:
     datetime: datetime
 
 
+@dataclass_json
 @dataclass
 class RequestModelV2:
     route_id: str
@@ -69,6 +72,7 @@ class RequestModelV2:
     points: list[PointData]
 
 
+@dataclass_json
 @dataclass
 class Location:
     latitude: float  # 50.7463
@@ -77,6 +81,7 @@ class Location:
     un_locode: str  # GBRYD
 
 
+@dataclass_json
 @dataclass
 class Route:
     route_name: str  # Portsmouth - Fishbourne
@@ -94,16 +99,17 @@ def lambda_handler(event, context):
         body = event['body']
         # always expecting a dict here, could be V1 or V2
         if body.get("latitude") is not None:
+            logger.info("Processing V1 Data")
             # it's V1
             request = RequestModelV1(**body)
             return [request]
 
         # Guess it's V2 then
+        logger.info("Processing V2 Data")
         request = from_dict(
             data_class=RequestModelV2,
             data=body,
-            config=dacite.Config(type_hooks={datetime: isoparse})
-        )
+            config=dacite.Config(type_hooks={datetime: isoparse}))
 
         ddb_response = table.get_item(Key={"route_name": request.route_id})
         route_item = ddb_response.get("Item")
@@ -120,7 +126,6 @@ def lambda_handler(event, context):
 
         for point in request.points:
             logger.info(f"traversing point {point}")
-            logger.info(f" point.lat is {point.lat}")
 
             # copying here as there's a question over lat/lon latitude/longitude naming atm, plus it
             # doesn't hurt to leave the original unmutated
@@ -133,6 +138,7 @@ def lambda_handler(event, context):
 
         result.append(route.end)
 
+        logger.info(f"about to serialize result {result}")
         return result
     except Exception as e:
         return {
